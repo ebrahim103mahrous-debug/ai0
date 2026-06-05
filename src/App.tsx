@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { FileQuestion, CheckCircle, XCircle, ArrowRight, ArrowLeft, Home, Trophy } from 'lucide-react';
+import { FileQuestion, CheckCircle, XCircle, ArrowRight, ArrowLeft, Home, Trophy, Clock } from 'lucide-react';
 import { AI_QUESTIONS, Question } from './data/questions';
 
 interface ActiveQuestion extends Question {
@@ -8,7 +8,7 @@ interface ActiveQuestion extends Question {
   shuffledCorrectAnswer: number;
 }
 
-type ViewState = 'selection' | 'quiz' | 'result';
+type ViewState = 'selection' | 'setup_random' | 'quiz' | 'result';
 
 export default function App() {
   const [view, setView] = useState<ViewState>('selection');
@@ -18,6 +18,25 @@ export default function App() {
   const [score, setScore] = useState(0);
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
   const [isAnswered, setIsAnswered] = useState(false);
+  const [startTime, setStartTime] = useState<number | null>(null);
+  const [timeElapsed, setTimeElapsed] = useState(0);
+  const [finalTime, setFinalTime] = useState(0);
+
+  useEffect(() => {
+    let interval: ReturnType<typeof setInterval>;
+    if (view === 'quiz' && startTime) {
+      interval = setInterval(() => {
+        setTimeElapsed(Math.floor((Date.now() - startTime) / 1000));
+      }, 1000);
+    }
+    return () => clearInterval(interval);
+  }, [view, startTime]);
+
+  const formatTime = (seconds: number) => {
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    return `${m}:${s.toString().padStart(2, '0')}`;
+  };
 
   const ranges = [
     { label: 'المجموعة الأولى', range: [1, 10], baseColor: 'emerald' },
@@ -40,17 +59,13 @@ export default function App() {
     return map[color] || map.purple;
   };
 
-  const handleStartQuiz = (range: [number, number]) => {
-    const rawQuestions = AI_QUESTIONS.slice(range[0] - 1, range[1]);
-    
-    const preparedQuestions = rawQuestions.map(q => {
-      // Create an array of objects to keep track of the original correct answer
+  const prepareQuestions = (questions: Question[]) => {
+    return questions.map(q => {
       const optionsWithCorrectness = q.options.map((opt, i) => ({
         text: opt,
         isCorrect: i === q.correctAnswer
       }));
 
-      // Fisher-Yates Shuffle
       for (let i = optionsWithCorrectness.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
         [optionsWithCorrectness[i], optionsWithCorrectness[j]] = [optionsWithCorrectness[j], optionsWithCorrectness[i]];
@@ -62,14 +77,28 @@ export default function App() {
         shuffledCorrectAnswer: optionsWithCorrectness.findIndex(o => o.isCorrect)
       };
     });
+  };
 
-    setActiveQuestions(preparedQuestions);
+  const startQuizSession = (rawQuestions: Question[], range: [number, number] | null) => {
+    setActiveQuestions(prepareQuestions(rawQuestions));
     setCurrentRange(range);
     setCurrentIndex(0);
     setScore(0);
     setSelectedOption(null);
     setIsAnswered(false);
+    setStartTime(Date.now());
+    setTimeElapsed(0);
     setView('quiz');
+  };
+
+  const handleStartQuiz = (range: [number, number]) => {
+    const rawQuestions = AI_QUESTIONS.slice(range[0] - 1, range[1]);
+    startQuizSession(rawQuestions, range);
+  };
+
+  const handleStartRandomQuiz = (count: number) => {
+    const rawQuestions = [...AI_QUESTIONS].sort(() => Math.random() - 0.5).slice(0, count);
+    startQuizSession(rawQuestions, null);
   };
 
   const handleOptionSelect = (optionIndex: number) => {
@@ -88,6 +117,7 @@ export default function App() {
       setSelectedOption(null);
       setIsAnswered(false);
     } else {
+      setFinalTime(Math.floor((Date.now() - (startTime || 0)) / 1000));
       setView('result');
     }
   };
@@ -142,6 +172,61 @@ export default function App() {
                   );
                 })}
               </div>
+
+              <div className="mt-12 bg-white border-4 border-dashed border-purple-200 rounded-[3rem] p-8 flex flex-col md:flex-row items-center justify-between gap-6 shadow-sm">
+                <div className="flex flex-col gap-2 text-right md:w-2/3">
+                  <h4 className="text-2xl font-bold text-purple-900">مستعد للتحدي النهائي؟</h4>
+                  <p className="text-slate-500 font-medium">اختبار شامل يغطي أسئلة متنوعة بشكل عشوائي مع حساب الوقت والتصحيح الفوري للإجابات.</p>
+                </div>
+                <button 
+                  onClick={() => setView('setup_random')} 
+                  className="px-10 flex-shrink-0 py-5 bg-gradient-to-r from-[#F0ABFC] to-[#C084FC] text-white rounded-[2rem] font-black text-xl shadow-xl hover:shadow-2xl transition-all w-full md:w-auto hover:-translate-y-1 cursor-pointer"
+                >
+                  التحدي العشوائي 🚀
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        )}
+
+        {/* VIEW: SETUP RANDOM */}
+        {view === 'setup_random' && (
+          <motion.div 
+            key="setup_random"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            className="w-full max-w-4xl"
+          >
+            <div className="bg-white/60 backdrop-blur-sm rounded-[3rem] shadow-xl overflow-hidden p-8 md:p-12 border-4 border-dashed border-purple-200 text-center">
+              <div className="mb-10 flex justify-center">
+                <div className="h-24 w-24 bg-purple-100 text-purple-600 rounded-2xl flex items-center justify-center shadow-lg border-b-4 border-purple-300">
+                  <FileQuestion className="w-12 h-12" />
+                </div>
+              </div>
+              <h2 className="text-4xl font-black text-purple-900 mb-4">إعداد التحدي العشوائي</h2>
+              <p className="text-purple-600 mb-10 text-lg font-medium">حدد عدد الأسئلة التي ترغب في الإجابة عليها. سيتم حساب الوقت الإجمالي وتصحيح الإجابات فوراً بعد التحديد.</p>
+              
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-10">
+                {[10, 20, 30, AI_QUESTIONS.length].map(count => (
+                  <button
+                    key={count}
+                    onClick={() => handleStartRandomQuiz(count)}
+                    className="p-6 h-36 bg-white border-b-8 border-r-4 border-purple-200 hover:border-purple-500 hover:bg-purple-50 rounded-[2.5rem] text-2xl font-black text-purple-700 hover:text-purple-900 transition-all shadow-sm hover:shadow-md hover:-translate-y-1 flex flex-col justify-center items-center gap-3 cursor-pointer"
+                  >
+                    <span className="text-4xl">{count === AI_QUESTIONS.length ? '🔥' : '✨'}</span>
+                    <span>{count === AI_QUESTIONS.length ? 'الكل' : `${count} سؤال`}</span>
+                  </button>
+                ))}
+              </div>
+
+              <button
+                onClick={handleGoHome}
+                className="flex items-center justify-center gap-2 px-8 py-4 bg-white text-slate-600 rounded-full font-bold hover:bg-slate-50 transition-all shadow-sm mx-auto cursor-pointer"
+              >
+                <Home className="w-5 h-5" />
+                العودة للرئيسية
+              </button>
             </div>
           </motion.div>
         )}
@@ -157,15 +242,21 @@ export default function App() {
           >
             <div className="bg-white rounded-[3rem] shadow-2xl overflow-hidden border-b-8 border-purple-500 flex flex-col min-h-[600px]">
               {/* Header */}
-              <div className="bg-gradient-to-r from-[#F0ABFC] to-[#C084FC] px-8 py-5 flex justify-between items-center text-white shadow-md z-10">
-                <div className="font-black text-xl drop-shadow-sm">
-                  السؤال {currentIndex + 1} من {activeQuestions.length}
+              <div className="bg-gradient-to-r from-[#F0ABFC] to-[#C084FC] px-6 md:px-8 py-4 md:py-5 flex justify-between items-center text-white shadow-md z-10 flex-wrap gap-4">
+                <div className="flex items-center gap-4">
+                  <div className="bg-white/20 px-3 md:px-4 py-2 rounded-full font-bold font-mono tracking-wider flex items-center gap-2">
+                    <Clock className="w-4 h-4" />
+                    <span dir="ltr">{formatTime(timeElapsed)}</span>
+                  </div>
+                  <div className="font-black text-lg md:text-xl drop-shadow-sm">
+                    السؤال {currentIndex + 1} من {activeQuestions.length}
+                  </div>
                 </div>
                 <button 
                   onClick={handleGoHome}
                   className="flex items-center gap-2 hover:bg-white/20 px-4 py-2 rounded-full transition-colors text-sm font-bold cursor-pointer"
                 >
-                  العودة للرئيسية <Home className="w-4 h-4" />
+                  الرئيسية <Home className="w-4 h-4" />
                 </button>
               </div>
 
@@ -273,14 +364,24 @@ export default function App() {
                 اكتمل الاختبار!
               </h2>
               <p className="font-bold opacity-90 mb-8 relative z-10">
-                لقد انتهيت من أسئلة المجموعة ({currentRange?.[0]} - {currentRange?.[1]})
+                {currentRange 
+                  ? `لقد انتهيت من أسئلة المجموعة (${currentRange[0]} - ${currentRange[1]})`
+                  : `لقد أنهيت التحدي العشوائي المُكون من ${activeQuestions.length} سؤال`}
               </p>
 
-              <div className="bg-white/20 backdrop-blur-md rounded-[2rem] p-8 mb-8 border border-white/30 relative z-10 shadow-sm">
-                <div className="text-sm font-bold uppercase tracking-widest mb-2 opacity-90">النتيجة النهائية</div>
-                <div className="text-6xl font-black flex items-baseline justify-center gap-2 drop-shadow-lg" dir="ltr">
-                  <span>{score}</span>
-                  <span className="text-3xl opacity-80 font-bold">/ {activeQuestions.length}</span>
+              <div className="bg-white/20 backdrop-blur-md rounded-[2rem] p-6 md:p-8 mb-8 border border-white/30 relative z-10 shadow-sm grid grid-cols-2 gap-4">
+                <div>
+                  <div className="text-sm font-bold uppercase tracking-widest mb-2 opacity-90">النتيجة النهائية</div>
+                  <div className="text-5xl md:text-6xl font-black flex items-baseline justify-center gap-2 drop-shadow-lg" dir="ltr">
+                    <span>{score}</span>
+                    <span className="text-2xl md:text-3xl opacity-80 font-bold">/ {activeQuestions.length}</span>
+                  </div>
+                </div>
+                <div className="border-r-2 border-white/20 pr-4">
+                  <div className="text-sm font-bold uppercase tracking-widest mb-2 opacity-90">وقت الإجابة</div>
+                  <div className="text-4xl md:text-5xl font-black flex items-center justify-center h-full drop-shadow-lg" dir="ltr">
+                    {formatTime(finalTime)}
+                  </div>
                 </div>
               </div>
 
